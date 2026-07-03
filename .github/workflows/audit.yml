@@ -13,5 +13,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Tap local repository
+        run: brew tap AnalyseDeCircuit/tap "$GITHUB_WORKSPACE"
+
+      - name: Style cask
+        run: brew style --cask AnalyseDeCircuit/tap/oxideterm
+
       - name: Audit cask
-        run: brew audit --cask --new --online Casks/oxideterm.rb
+        run: brew audit --cask --online AnalyseDeCircuit/tap/oxideterm
