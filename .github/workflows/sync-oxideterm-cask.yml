@@ -1,0 +1,131 @@
+name: Sync OxideTerm Cask
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: macos-latest
+    env:
+      CASK_PATH: Casks/oxideterm.rb
+      OXIDETERM_REPO: AnalyseDeCircuit/oxideterm
+      HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v7
+
+      - name: Resolve latest stable release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Only stable tags update the public cask. Preview builds can use a
+          # separate cask later if they need Homebrew distribution.
+          tag="$(
+            gh release list \
+              --repo "$OXIDETERM_REPO" \
+              --exclude-drafts \
+              --exclude-pre-releases \
+              --limit 20 \
+              --json tagName,isPrerelease,isDraft \
+              --jq '[.[] | select((.isDraft | not) and (.isPrerelease | not) and (.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")))] | .[0].tagName'
+          )"
+
+          if [ -z "$tag" ] || [ "$tag" = "null" ]; then
+            echo "No stable OxideTerm release found."
+            exit 1
+          fi
+
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Skip when cask is current
+        id: current
+        run: |
+          set -euo pipefail
+
+          current_version="$(ruby -e 'puts File.read(ENV.fetch("CASK_PATH"))[/version "([^"]+)"/, 1]')"
+          target_version="${{ steps.release.outputs.version }}"
+
+          if [ "$current_version" = "$target_version" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "OxideTerm cask is already at $target_version."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download macOS release assets
+        if: steps.current.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.release.outputs.version }}"
+          mkdir -p dist
+
+          gh release download "${{ steps.release.outputs.tag }}" \
+            --repo "$OXIDETERM_REPO" \
+            --dir dist \
+            --pattern "OxideTerm_${version}_macos_arm64.dmg" \
+            --pattern "OxideTerm_${version}_macos_x64.dmg"
+
+      - name: Update cask file
+        if: steps.current.outputs.changed == 'true'
+        env:
+          TARGET_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          arm_sha="$(shasum -a 256 "dist/OxideTerm_${TARGET_VERSION}_macos_arm64.dmg" | awk '{print $1}')"
+          intel_sha="$(shasum -a 256 "dist/OxideTerm_${TARGET_VERSION}_macos_x64.dmg" | awk '{print $1}')"
+          export arm_sha intel_sha
+
+          ruby <<'RUBY'
+          path = ENV.fetch("CASK_PATH")
+          version = ENV.fetch("TARGET_VERSION")
+          arm_sha = ENV.fetch("arm_sha")
+          intel_sha = ENV.fetch("intel_sha")
+
+          content = File.read(path)
+          content = content.sub(/version "[^"]+"/, %(version "#{version}"))
+          content = content.sub(
+            /sha256 arm:\s+"[^"]+",\n\s+intel: "[^"]+"/,
+            %(sha256 arm:   "#{arm_sha}",\n         intel: "#{intel_sha}")
+          )
+          File.write(path, content)
+          RUBY
+
+      - name: Style and audit cask
+        if: steps.current.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          brew tap --custom-remote AnalyseDeCircuit/tap "$GITHUB_WORKSPACE"
+
+          # The cask was edited in the workflow workspace and is not committed
+          # yet, so mirror it into Homebrew's tap clone before validation.
+          tap_path="$(brew --repo AnalyseDeCircuit/tap)"
+          cp "$GITHUB_WORKSPACE/$CASK_PATH" "$tap_path/$CASK_PATH"
+
+          brew style --cask AnalyseDeCircuit/tap/oxideterm
+          brew audit --cask --online AnalyseDeCircuit/tap/oxideterm
+
+      - name: Commit cask update
+        if: steps.current.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$CASK_PATH"
+          git commit -m "Update OxideTerm cask to ${{ steps.release.outputs.version }}"
+          git push
