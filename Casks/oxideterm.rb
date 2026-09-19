@@ -19,10 +19,9 @@ cask "oxideterm" do
 
   app "OxideTerm.app"
 
-  postflight do
+  postflight_steps do
     # Remove the quarantine attribute because current releases are not Apple-notarized.
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/OxideTerm.app"]
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/OxideTerm.app"]
   end
 
   zap trash: [
