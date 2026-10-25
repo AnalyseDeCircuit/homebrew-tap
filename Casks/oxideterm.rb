@@ -1,9 +1,9 @@
 cask "oxideterm" do
   arch arm: "arm64", intel: "x64"
 
-  version "2.2.5"
-  sha256 arm:   "1b65b9a06684205b1a6eb00822a672067dddf37038b0b134e75bbfed8aa08d96",
-         intel: "42c5217ddf9df0e3946f524315242a681d1ea2937e03cccc0c251bf9a5615e07"
+  version "2.2.6"
+  sha256 arm:   "78b80aa2701fa7d8fc5c8dc6aa65b0915f6e7fdeab9a0736b76b4dea8a26df4d",
+         intel: "6408256d5bdfa211f457ff5548e118a7e38c5c8adf4b8650cc52d9b178132e00"
 
   url "https://github.com/AnalyseDeCircuit/oxideterm/releases/download/v#{version}/OxideTerm_#{version}_macos_#{arch}.dmg"
   name "OxideTerm"
