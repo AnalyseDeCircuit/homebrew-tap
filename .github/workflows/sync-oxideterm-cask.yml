@@ -116,6 +116,9 @@ jobs:
           tap_path="$(brew --repo AnalyseDeCircuit/tap)"
           cp "$GITHUB_WORKSPACE/$CASK_PATH" "$tap_path/$CASK_PATH"
 
+          # Allow Homebrew to load only the cask this workflow audits.
+          brew trust --cask AnalyseDeCircuit/tap/oxideterm
+
           brew style --cask AnalyseDeCircuit/tap/oxideterm
           brew audit --cask --online AnalyseDeCircuit/tap/oxideterm
 
